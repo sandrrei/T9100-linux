@@ -489,7 +489,7 @@ repository to the tablet and run, **on the tablet**:
 
 ```bash
 sudo apt install git
-git clone https://github.com/sandrrei/T9100-linux.git && cd T9100-linux
+git clone https://github.com/<you>/a13-tablet-linux.git && cd a13-tablet-linux
 sudo ./install.sh
 sudo systemctl reboot
 ```
@@ -501,9 +501,10 @@ and interval chosen in the web panel.
 
 | File | Installed to | What it does |
 |---|---|---|
-| [`frame/moldura.sh`](frame/moldura.sh) | `/usr/local/bin/` | start-up screen with the panel address (once per boot), photo conversion in the background, `fbi` slideshow |
-| [`frame/prepara-fotos.sh`](frame/prepara-fotos.sh) | `/usr/local/bin/` | 800×480 copies in `/var/cache/moldura` (`cobrir` = crop to fill, `desfocado` = fit on a blurred background), EXIF rotation, removes copies of deleted photos |
+| [`frame/moldura.sh`](frame/moldura.sh) | `/usr/local/bin/` | start-up screen with the panel address (once per boot), starts the conversion service, `fbi` slideshow; holds the `MODO=` and `-t N` settings edited by the panel |
 | [`frame/moldura.service`](frame/moldura.service) | `/etc/systemd/system/` | runs the slideshow on `tty1` |
+| [`frame/prepara-fotos.sh`](frame/prepara-fotos.sh) | `/usr/local/bin/` | 800×480 copies in `/var/cache/moldura` (`cobrir` = crop to fill, `desfocado` = fit on a blurred background), EXIF rotation, removes copies of deleted photos |
+| [`frame/prepara-fotos.service`](frame/prepara-fotos.service) | `/etc/systemd/system/` | runs the conversion at idle priority; restarts the slideshow when new photos are ready |
 | [`panel/painel.py`](panel/painel.py) | `/usr/local/bin/` | web control panel (Portuguese / English) |
 | [`panel/painel.service`](panel/painel.service) | `/etc/systemd/system/` | runs the panel on port 80 |
 | [`frame/wifi-cartao.sh`](frame/wifi-cartao.sh) | `/usr/local/bin/` | applies `wifi.txt` from the photo partition at boot |
@@ -542,6 +543,9 @@ PAINEL_SYSTEMCTL=true python3 panel/painel.py`.
 - `drm: no dumb buffer support` on `/dev/dri/card0` is harmless (that node is the `lima` GPU);
   `-d /dev/fb0` makes it use the framebuffer.
 - `fbi -a` letterboxes and cannot crop, hence the pre-rendered 800×480 copies.
+- The conversion runs in its own service. A background job started from `moldura.sh` dies: the
+  service owns `tty1`, and when the shell `exec`s into `fbi` (which forks and exits), the
+  remaining processes on that terminal get SIGHUP. The photos then stay "preparing" forever.
 - The start-up screen uses `--timeout 20` rather than `-t 20` on purpose: the panel edits the
   first `-t N` in `moldura.sh` to change the interval.
 

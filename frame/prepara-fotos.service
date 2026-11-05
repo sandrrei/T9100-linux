@@ -1,0 +1,12 @@
+[Unit]
+Description=Prepare 800x480 copies of the photos for the slideshow
+RequiresMountsFor=/srv/fotos
+
+[Service]
+# Separate service on purpose: a background job inside moldura.service gets SIGHUP
+# from tty1 and dies when fbi takes over the terminal.
+Type=oneshot
+ExecStart=/usr/local/bin/prepara-fotos.sh --reiniciar
+Nice=19
+IOSchedulingClass=idle
+TimeoutStartSec=infinity
