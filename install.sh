@@ -29,7 +29,8 @@ rm -f "$TMP"
 install -m 755 frame/prepara-fotos.sh frame/wifi-cartao.sh panel/painel.py /usr/local/bin/
 
 echo "== Services"
-install -m 644 frame/moldura.service frame/wifi-cartao.service panel/painel.service /etc/systemd/system/
+install -m 644 frame/moldura.service frame/prepara-fotos.service frame/wifi-cartao.service \
+    panel/painel.service /etc/systemd/system/
 
 echo "== Watchdog (A13 hardware max is 16 s) and journal flushing"
 mkdir -p /etc/systemd/system.conf.d /etc/systemd/journald.conf.d
