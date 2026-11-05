@@ -9,6 +9,9 @@ Type=forking
 ExecStart=/usr/local/bin/moldura.sh
 StandardInput=tty
 TTYPath=/dev/tty1
+# fbi prints "trying fbdev ..." on start; keep it off the screen
+StandardOutput=journal
+StandardError=journal
 TimeoutStartSec=infinity
 Restart=on-failure
 RestartSec=10
