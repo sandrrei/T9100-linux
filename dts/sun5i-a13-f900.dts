@@ -12,6 +12,20 @@
 / {
 	model = "Nuclear F900 A13 tablet";
 	compatible = "nuclear,f900", "allwinner,sun5i-a13";
+
+	/* 1-cell Li-ion, 5550 mAh (script.fex: pmu_battery_cap) */
+	battery: battery {
+		compatible = "simple-battery";
+		charge-full-design-microamp-hours = <5550000>;
+		constant-charge-current-max-microamp = <1000000>;
+		constant-charge-voltage-max-microvolt = <4200000>;
+		voltage-min-design-microvolt = <3300000>;
+	};
+};
+
+/* Without a monitored battery the driver caps charging at 300 mA */
+&battery_power_supply {
+	monitored-battery = <&battery>;
 };
 
 &i2c1 {

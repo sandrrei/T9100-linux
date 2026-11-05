@@ -1,0 +1,17 @@
+[Unit]
+Description=AXP209 charging: no USB input limit and faster battery charging
+# Only for a 5 V / 2 A wall charger. On a PC USB port the tablet would try to draw
+# more than the port allows (the port then cuts or sags; nothing is damaged).
+After=systemd-modules-load.service
+
+[Service]
+Type=oneshot
+# Register 0x30, bits 1-0: 00 = 900 mA limit (default), 11 = no limit.
+# The other bits (VHOLD 4.0 V regulation, enabled) are kept as they are (0x40).
+ExecStart=/usr/sbin/i2cset -f -y 0 0x34 0x30 0x43
+# Charge current, up to the 1000 mA allowed by the device tree battery node.
+# 700 mA leaves room for the system (~0.9 A with the screen on) on a 2 A charger.
+ExecStart=/bin/sh -c 'echo 700000 > /sys/class/power_supply/axp20x-battery/constant_charge_current'
+
+[Install]
+WantedBy=multi-user.target

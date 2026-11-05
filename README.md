@@ -62,6 +62,7 @@ Remove the card and the original Android boots as before.
 | [`driver/gt827/`](driver/gt827/) | Goodix GT827 touchscreen driver (out-of-tree module) |
 | [`dts/sun5i-a13-f900.dts`](dts/sun5i-a13-f900.dts) | board device tree: Q8 tablet + GT827 touchscreen |
 | [`tools/gt827-test.sh`](tools/gt827-test.sh) | talk to the GT827 from userspace with `i2ctransfer` |
+| [`power/axp209-charging.service`](power/axp209-charging.service) | optional: lift the 900 mA USB input limit and charge faster (wall charger only) |
 
 ---
 
@@ -94,7 +95,7 @@ ro.build.fingerprint = softwinners/nuclear_f900/nuclear-f900:4.0.4/IMM76D/201208
 | Other I2C1 devices | `0x4c` (probably MMA7660 accelerometer), `0x51` (probably RTC) | ⏳ |
 | Wi-Fi | Realtek **`0bda:018a`** (RTL8188C family) on `usbc1`, powered by AXP LDO3 | ✅ `rtl8192cu` |
 | USB OTG | `usbc0`: ID **PG2**, VBUS detect **PG1**, VBUS drive **PG12** | ✅ |
-| Battery | declared 5550 mAh, reads correctly (capacity, voltage) | ✅ |
+| Battery | 5550 mAh, reads correctly (capacity, voltage); described in the board DTS | ✅ see "Charging" |
 
 Note: the fex declares `ctp_name = "ft5x_ts"`, but `dmesg` shows the detected chip is the **gt82x**.
 
@@ -648,6 +649,44 @@ matching the screen (top-left ≈ (11, 11), bottom-right ≈ (794, 474)).
 
 Note: building in a modified kernel tree can change `kernel.release` (e.g. a `-dirty` suffix). If
 `insmod` reports `invalid module format`, compare `include/config/kernel.release` with `uname -r`.
+
+---
+
+## Charging
+
+Symptom: plugged in, but the battery slowly drains (`status` alternates between `Charging` and
+`Not charging`, `current_now` = 0). The AXP209 registers explain it:
+
+```bash
+cat /sys/class/power_supply/axp20x-{battery,usb}/uevent
+for r in 0x00 0x01 0x30 0x33; do printf '%s: ' $r; sudo i2cget -f -y 0 0x34 $r; done
+```
+
+| Register | Value | Meaning |
+|---|---|---|
+| `0x01` | `0x70` | battery present, charger in charge mode, no over-temperature |
+| `0x33` | `0xd0` | charging enabled, 4.2 V, 300 mA |
+| `0x30` | `0x40` | VBUS input limited to **900 mA** (bits 1-0 = `00`) |
+
+With the screen on, Wi-Fi and photo conversion, the system alone takes ~850 mA, so nothing is
+left for the battery (stopping the slideshow and dimming the screen immediately gives
+`Charging`, ~420 mA). Two limits, two fixes:
+
+1. **USB input limit** (900 mA): register `0x30` bits 1-0 = `11` removes it (`0x43`).
+   Only with a 5 V / 2 A wall charger; a PC port cannot supply more than ~900 mA.
+2. **Charge current** (300 mA): without a `monitored-battery` the driver caps it at 300 mA. The
+   board DTS declares the battery (`simple-battery`, 5550 mAh, max 1000 mA), so it can be raised.
+
+Measured with a 2 A charger after the change: USB 1.15–1.4 A, battery steadily `Charging`.
+
+Install (optional; it is not part of `install.sh` because it is wrong on a PC USB port):
+```bash
+sudo install -m 644 power/axp209-charging.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now axp209-charging
+sudo i2cget -f -y 0 0x34 0x30                                       # 0x43
+cat /sys/class/power_supply/axp20x-battery/constant_charge_current  # 700000
+```
+The service sets 700 mA, leaving room for the system on a 2 A charger; the DTS allows up to 1000 mA.
 
 ---
 
