@@ -1,0 +1,31 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * Generic Allwinner A13 7" tablet "nuclear-f900" (sold as T9100)
+ * Same board as the Q8 A13 reference tablet, plus its Goodix GT827 touchscreen.
+ */
+
+#include "sun5i-a13-q8-tablet.dts"
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/interrupt-controller/irq.h>
+
+/ {
+	model = "Nuclear F900 A13 tablet";
+	compatible = "nuclear,f900", "allwinner,sun5i-a13";
+};
+
+&i2c1 {
+	status = "okay";
+
+	touchscreen@5d {
+		compatible = "goodix,gt827";
+		reg = <0x5d>;
+		interrupt-parent = <&pio>;
+		interrupts = <6 11 IRQ_TYPE_EDGE_RISING>;	/* PG11 */
+		reset-gpios = <&pio 1 3 GPIO_ACTIVE_LOW>;	/* PB3 */
+		touchscreen-size-x = <480>;
+		touchscreen-size-y = <800>;
+		touchscreen-swapped-x-y;
+		touchscreen-inverted-x;
+	};
+};

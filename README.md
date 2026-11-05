@@ -23,7 +23,8 @@ Remove the card and the original Android boots as before.
 | 2 | Mainline U-Boot, FEL boot, working LCD | ✅ done |
 | 3 | Mainline kernel + initramfs, USB serial console, DRM display | ✅ done |
 | 4 | Debian 13 armhf rootfs on microSD, standalone boot, Wi-Fi + SSH | ✅ done |
-| 5 | Remaining hardware (touch, sleep, GPU userspace) | ⏳ |
+| 5 | Touchscreen: own Goodix GT827 driver + board device tree | ✅ done |
+| 6 | Touch UI, accelerometer, RTC, upstreaming | ⏳ |
 
 ### What works on mainline (kernel 7.4-rc1, U-Boot 2027.01-rc1)
 
@@ -44,7 +45,7 @@ Remove the card and the original Android boots as before.
 | Debian 13 (trixie) armhf | ✅ | boots standalone from microSD, SSH over Wi-Fi |
 | NTP time sync | ✅ | no RTC battery: time comes from `systemd-timesyncd` |
 | Photo frame + web control panel | ✅ | `fbi` slideshow, `painel.py` on port 80, `a13-tablet.local` |
-| Touchscreen GT82x | ❌ | no mainline driver yet |
+| Touchscreen Goodix GT827 | ✅ | own driver ([`driver/gt827`](driver/gt827/gt827.c)), interrupt, 5 contacts, see Step 5 |
 
 ## Repository layout
 
@@ -58,6 +59,9 @@ Remove the card and the original Android boots as before.
 | [`frame/`](frame/) | photo frame scripts and services |
 | [`panel/`](panel/) | web control panel |
 | [`install.sh`](install.sh) | installs `frame/` and `panel/` on the tablet |
+| [`driver/gt827/`](driver/gt827/) | Goodix GT827 touchscreen driver (out-of-tree module) |
+| [`dts/sun5i-a13-f900.dts`](dts/sun5i-a13-f900.dts) | board device tree: Q8 tablet + GT827 touchscreen |
+| [`tools/gt827-test.sh`](tools/gt827-test.sh) | talk to the GT827 from userspace with `i2ctransfer` |
 
 ---
 
@@ -86,7 +90,8 @@ ro.build.fingerprint = softwinners/nuclear_f900/nuclear-f900:4.0.4/IMM76D/201208
 | LCD power | `power0` → **AXP GPIO0** | ✅ |
 | Backlight enable | `power1` → **AXP GPIO1** | ✅ |
 | Backlight PWM | **PB2** (PWM0) | ✅ |
-| Touchscreen | **Goodix GT82x** on I2C1 (PB15/PB16) @ 0x5d, INT **PG11**, reset **PB3**, X/Y swapped, Y inverted | ❌ needs porting (`gt82x_up.ko` in Android) |
+| Touchscreen | **Goodix GT827** on I2C1 (PB15/PB16) @ 0x5d, INT **PG11**, reset **PB3** (active low), sensor 480×800 portrait | ✅ `gt827` (this repo) |
+| Other I2C1 devices | `0x4c` (probably MMA7660 accelerometer), `0x51` (probably RTC) | ⏳ |
 | Wi-Fi | Realtek **`0bda:018a`** (RTL8188C family) on `usbc1`, powered by AXP LDO3 | ✅ `rtl8192cu` |
 | USB OTG | `usbc0`: ID **PG2**, VBUS detect **PG1**, VBUS drive **PG12** | ✅ |
 | Battery | declared 5550 mAh, reads correctly (capacity, voltage) | ✅ |
@@ -573,14 +578,88 @@ The new owner only needs a card reader (`wifi.txt` + photos) and then uses `http
 
 ---
 
-## Step 5 — Remaining hardware
+## Step 5 — Touchscreen: Goodix GT827 driver
 
-1. GT82x touchscreen: port `gt82x.c` from the Allwinner 3.0 vendor kernel (linux-sunxi `sunxi-3.0`)
-   or add support to mainline `goodix.c`
-2. Kernel: add `EXT4_FS_POSIX_ACL` (journald ACL warning)
-3. Own DTS (`sun5i-a13-f900.dts`) once touch / accelerometer are known
-4. Find out why DRM waits for the 10 s deferred-probe timeout
-5. Mesa + `lima` for GPU acceleration
+Mainline `goodix.c` covers the GT1x, GT911 and GT967 families, not the older GT8xx ("Guitar")
+generation. No public source exists for the vendor `gt82x` driver either (the linux-sunxi
+`sunxi-3.0` tree only has `gt818_ts.c`). So the protocol was recovered from the Android module
+`gt82x_up.ko` (GPL, "GTP Series Driver"), verified from userspace, and implemented as a small
+mainline-style driver: [`driver/gt827/gt827.c`](driver/gt827/gt827.c).
+
+### How the protocol was recovered
+
+1. `strings gt82x_up.ko` → `GT827_01_2R02_`: the chip is a **GT827**.
+2. `i2cdetect -y -r 1` with PB3 high → the controller answers at **0x5d**
+   (also visible: `0x4c`, probably the MMA7660 accelerometer, and `0x51`, probably an RTC).
+3. `arm-linux-gnueabihf-objdump -d / -s gt82x_up.ko` → function names (`gtp_send_cfg`,
+   `gtp_init_panel`, `gtp_read_version`, `goodix_ts_work_func`), register addresses, and two
+   112-byte configuration blocks in `.rodata` (480×800, used by this tablet, and 600×800).
+4. [`tools/gt827-test.sh`](tools/gt827-test.sh) replays the vendor sequence with `i2ctransfer`
+   (reset, send config, read version, poll touches): the first touches were read from the shell
+   before any kernel code existed.
+
+### Protocol
+
+| Item | GT827 |
+|---|---|
+| Register addresses | 16-bit, big-endian |
+| End command | write `0x80 0x00` (register `0x8000`, no data) after **every** access |
+| Reset | PB3, active low (low = held in reset, the chip does not ACK) |
+| Version | 3 bytes at `0x0F7D` (`0x27 0x20 0x30` → GT827, firmware 2030) |
+| Configuration | 112 bytes at `0x0F80`; RAM only, sent at every probe |
+| Touch data | `0x0F40`: byte 0 bit 7 = valid, bits 0–4 = active contact ids; byte 1 low nibble `0xF` = "send me the config"; then 5 bytes per contact, packed in id order: X (be16), Y (be16), size |
+| Sensor axes | 480×800 portrait |
+
+Without its configuration the controller answers on I2C, but stays at `0x80 0x0f` and never scans.
+
+### Build and install
+
+```bash
+cd driver/gt827
+make KDIR=~/linux                     # -> gt827.ko (cross-compiled for the tablet)
+scp gt827.ko user@a13-tablet.local:~
+# on the tablet:
+sudo mkdir -p /lib/modules/$(uname -r)/extra
+sudo cp ~/gt827.ko /lib/modules/$(uname -r)/extra/ && sudo depmod -a
+```
+
+Quick test without a device tree change (polling, raw sensor axes):
+```bash
+sudo gpioset -c gpiochip0 35=1 &                     # hold PB3 high (no reset GPIO without DT)
+sudo insmod ~/gt827.ko poll=1
+echo gt827 0x5d | sudo tee /sys/bus/i2c/devices/i2c-1/new_device
+sudo evtest                                          # "Goodix GT827 Touchscreen"
+```
+
+### Device tree
+
+[`dts/sun5i-a13-f900.dts`](dts/sun5i-a13-f900.dts) includes the Q8 tablet DTS and adds the
+touchscreen (interrupt on PG11, reset on PB3, `touchscreen-swapped-x-y` +
+`touchscreen-inverted-x`; inversions apply to the sensor axes, before the swap).
+
+```bash
+cp dts/sun5i-a13-f900.dts ~/linux/arch/arm/boot/dts/allwinner/
+# add "sun5i-a13-f900.dtb \" after "sun5i-a13-q8-tablet.dtb \" in that folder's Makefile
+make ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- allwinner/sun5i-a13-f900.dtb
+```
+Copy the `.dtb` to `/boot` on the tablet and point `boot/boot.cmd` at it (then `mkimage`).
+Result: the module loads at boot, uses the interrupt, and `evtest` reports 0–799 × 0–479
+matching the screen (top-left ≈ (11, 11), bottom-right ≈ (794, 474)).
+
+Note: building in a modified kernel tree can change `kernel.release` (e.g. a `-dirty` suffix). If
+`insmod` reports `invalid module format`, compare `include/config/kernel.release` with `uname -r`.
+
+---
+
+## Next steps
+
+1. A touch UI for the photo frame (tap for next photo, swipe, on-screen controls)
+2. MMA7660 accelerometer at `0x4c` (mainline driver `mma7660`) for auto-rotation
+3. Identify the chip at `0x51` (RTC?) so the clock survives without network
+4. Send the GT827 driver and the board DTS upstream (linux-input / linux-sunxi)
+5. Kernel: add `EXT4_FS_POSIX_ACL` (journald ACL warning)
+6. Find out why DRM waits for the 10 s deferred-probe timeout
+7. Mesa + `lima` for GPU acceleration
 
 ---
 
@@ -602,7 +681,7 @@ The new owner only needs a card reader (`wifi.txt` + photos) and then uses `http
 Have a similar A13 tablet? Issues and pull requests are welcome, especially:
 - `script.fex` / `dmesg` from other board variants
 - working device tree changes
-- progress on the GT82x touchscreen driver
+- testing the GT827 driver on other GT82x tablets (GT827 / GT828)
 
 ## References
 
