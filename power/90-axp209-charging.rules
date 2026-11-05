@@ -1,0 +1,3 @@
+# Re-apply the AXP209 charging settings whenever USB power is (re)connected:
+# on every VBUS plug-in the 900 mA input limit (register 0x30) comes back.
+ACTION=="change", SUBSYSTEM=="power_supply", KERNEL=="axp20x-usb", ATTR{online}=="1", RUN+="/usr/bin/systemctl --no-block start axp209-charging.service"

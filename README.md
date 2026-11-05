@@ -62,7 +62,7 @@ Remove the card and the original Android boots as before.
 | [`driver/gt827/`](driver/gt827/) | Goodix GT827 touchscreen driver (out-of-tree module) |
 | [`dts/sun5i-a13-f900.dts`](dts/sun5i-a13-f900.dts) | board device tree: Q8 tablet + GT827 touchscreen |
 | [`tools/gt827-test.sh`](tools/gt827-test.sh) | talk to the GT827 from userspace with `i2ctransfer` |
-| [`power/axp209-charging.service`](power/axp209-charging.service) | optional: lift the 900 mA USB input limit and charge faster (wall charger only) |
+| [`power/`](power/) | optional: lift the 900 mA USB input limit and charge faster (wall charger only), service + udev rule |
 
 ---
 
@@ -682,11 +682,18 @@ Measured with a 2 A charger after the change: USB 1.15–1.4 A, battery steadily
 Install (optional; it is not part of `install.sh` because it is wrong on a PC USB port):
 ```bash
 sudo install -m 644 power/axp209-charging.service /etc/systemd/system/
-sudo systemctl daemon-reload && sudo systemctl enable --now axp209-charging
+sudo install -m 644 power/90-axp209-charging.rules /etc/udev/rules.d/
+sudo systemctl daemon-reload && sudo udevadm control --reload-rules
+sudo systemctl enable --now axp209-charging
 sudo i2cget -f -y 0 0x34 0x30                                       # 0x43
 cat /sys/class/power_supply/axp20x-battery/constant_charge_current  # 700000
 ```
-The service sets 700 mA, leaving room for the system on a 2 A charger; the DTS allows up to 1000 mA.
+The service sets 700 mA, leaving room for the system on a 2 A charger; the DTS allows up to 1000 mA
+(measured: ~530 mA into the battery, the AXP209 reduces it to keep VBUS at ~4.5 V).
+
+The 900 mA input limit comes back **every time the USB cable is re-plugged** (`0x30` reads `0x40`
+again), so the udev rule re-runs the service on each `change` event of `axp20x-usb` with
+`online=1`.
 
 ---
 
