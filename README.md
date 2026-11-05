@@ -489,7 +489,7 @@ repository to the tablet and run, **on the tablet**:
 
 ```bash
 sudo apt install git
-git clone https://github.com/<you>/a13-tablet-linux.git && cd a13-tablet-linux
+git clone https://github.com/sandrrei/T9100-linux.git && cd T9100-linux
 sudo ./install.sh
 sudo systemctl reboot
 ```
