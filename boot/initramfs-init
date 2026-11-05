@@ -1,0 +1,7 @@
+#!/bin/sh
+# /init for the BusyBox debugging initramfs (see README, Step 3)
+mount -t proc proc /proc
+mount -t sysfs sys /sys
+mount -t devtmpfs dev /dev
+echo "=== A13 Linux alive ==="
+while true; do setsid cttyhack sh; done

@@ -1,0 +1,11 @@
+[Unit]
+Description=Apply Wi-Fi from the SD card (wifi.txt)
+RequiresMountsFor=/srv/fotos
+Before=wpa_supplicant@wlan0.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/wifi-cartao.sh
+
+[Install]
+WantedBy=multi-user.target

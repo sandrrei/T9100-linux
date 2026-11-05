@@ -1,0 +1,27 @@
+# Vendor binaries and full Android dumps (do not publish)
+nanda/
+modules/
+*.ko
+*.img
+
+# Personal data
+backup/
+fotos/
+*.jpg
+*.jpeg
+*.png
+wpa_supplicant*.conf
+wifi.txt
+wifi-aplicado.txt
+dmesg*.txt
+*.log
+
+# Build outputs
+*.scr
+uInitrd
+initramfs.cpio.gz
+*.sunxi
+*.bin
+
+# Python
+__pycache__/

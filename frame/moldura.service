@@ -1,0 +1,17 @@
+[Unit]
+Description=Photo slideshow on the LCD
+After=local-fs.target srv-fotos.mount
+Conflicts=getty@tty1.service
+
+[Service]
+# fbi forks into the background; with Type=simple systemd would kill it
+Type=forking
+ExecStart=/usr/local/bin/moldura.sh
+StandardInput=tty
+TTYPath=/dev/tty1
+TimeoutStartSec=infinity
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
